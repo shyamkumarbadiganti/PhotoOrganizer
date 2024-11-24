@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Photo Rekognition Face Organiser</h1>
+        
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <h2>Upload Image</h2>
+            <form id="uploadForm" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="photo">Select image to upload:</label>
+                    <input type="file" class="form-control-file" id="photo" name="photo" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload</button>
+            </form>
+            <div id="message" class="mt-3"></div>
+        </div>
+
+        <!-- Toggle Folders Section -->
+        <div class="folder-toggle">
+            <button id="showFolders" class="btn btn-secondary">Show Folders</button>
+            <button id="hideFolders" class="btn btn-secondary" style="display:none;">Hide Folders</button>
+        </div>
+
+        <!-- Folders Section -->
+        <div id="folders" class="gallery-section" style="display: none;">
+            <h2>S3 Folders</h2>
+            <div id="foldersContainer"></div>
+        </div>
+    </div>
+
+    <!-- Full Screen Modal -->
+    <div id="fullScreenModal" class="modal">
+        <span class="close">&times;</span>
+        <div class="modal-content">
+            <img id="fullScreenImage" class="full-screen-image">
+            <button id="downloadImage" class="btn btn-primary">Download</button>
+            <button id="deleteImage" class="btn btn-danger">Delete</button>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            function clearAlerts() {
+                $('#message').empty();
+            }
+
+            $('#uploadForm').on('submit', function(event) {
+                event.preventDefault();
+                clearAlerts(); // Clear previous alerts
+                var formData = new FormData(this);
+                $.ajax({
+                    url: '/upload',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        $('#message').html('<div class="alert alert-success">' + response.message + '</div>');
+                    },
+                    error: function(response) {
+                        var error = response.responseJSON ? response.responseJSON.error : 'An error occurred';
+                        $('#message').html('<div class="alert alert-danger">' + error + '</div>');
+                    }
+                });
+            });
+
+            $('#showFolders').on('click', function() {
+                clearAlerts(); // Clear previous alerts
+                $.ajax({
+                    url: '/folders',
+                    type: 'GET',
+                    success: function(data) {
+                        $('#foldersContainer').empty();
+                        if (data.length === 0) {
+                            $('#foldersContainer').html('<p>No folders found.</p>');
+                        } else {
+                            data.forEach(function(folder) {
+                                var folderDiv = $('<div>').addClass('folder');
+                                var folderTitle = $('<h3>').text(folder.folder);
+                                var renameFolderBtn = $('<button>').text('Rename Folder').addClass('btn btn-secondary').data('folder', folder.folder);
+                                var galleryDiv = $('<div>').addClass('gallery');
+                                folder.images.forEach(function(image) {
+                                    var img = $('<img>').attr('src', 'https://mainbuckets123.s3.amazonaws.com/' + image).addClass('s3-image').data('key', image);
+                                    galleryDiv.append(img);
+                                });
+                                folderDiv.append(folderTitle).append(galleryDiv).append(renameFolderBtn);
+                                $('#foldersContainer').append(folderDiv);
+                            });
+                        }
+                        $('#folders').show();
+                        $('#showFolders').hide();
+                        $('#hideFolders').show();
+                    },
+                    error: function() {
+                        $('#foldersContainer').html('<p>Error fetching details</p>');
+                    }
+                });
+            });
+
+            $('#hideFolders').on('click', function() {
+                clearAlerts(); // Clear previous alerts
+                $('#folders').hide();
+                $('#showFolders').show();
+                $('#hideFolders').hide();
+            });
+
+            $(document).on('click', '.s3-image', function() {
+                var src = $(this).attr('src');
+                var key = $(this).data('key');
+                $('#fullScreenImage').attr('src', src);
+                $('#fullScreenModal').show();
+
+                $('#downloadImage').off('click').on('click', function() {
+                    window.open(src, '_blank');
+                });
+
+                $('#deleteImage').off('click').on('click', function() {
+                    $.ajax({
+                        url: '/delete_image',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ image_key: key }),
+                        success: function(response) {
+                            console.log(response.message);
+                            $('#fullScreenModal').hide();
+                            location.reload();
+                        },
+                        error: function(response) {
+                            console.log(response.responseJSON.error);
+                        }
+                    });
+                });
+            });
+
+            $('#fullScreenModal .close').on('click', function() {
+                $('#fullScreenModal').hide();
+            });
+
+            $(document).on('click', '.btn-secondary', function() {
+                clearAlerts(); // Clear previous alerts
+                var oldFolderName = $(this).data('folder');
+                var newFolderName = prompt('Enter the new folder name:', oldFolderName);
+                if (newFolderName && newFolderName !== oldFolderName) {
+                    $.ajax({
+                        url: '/rename_folder',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ old_folder_name: oldFolderName, new_folder_name: newFolderName }),
+                        success: function(response) {
+                            console.log(response.message);
+                            location.reload();
+                        },
+                        error: function(response) {
+                            console.log(response.responseJSON.error);
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
